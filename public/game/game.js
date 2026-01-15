@@ -1,0 +1,475 @@
+// Game Canvas Setup
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Responsive canvas sizing
+function resizeCanvas() {
+  const maxWidth = Math.min(window.innerWidth - 20, 800);
+  const maxHeight = Math.min(window.innerHeight - 150, 600);
+  const ratio = Math.min(maxWidth / 800, maxHeight / 600);
+
+  canvas.width = 800;
+  canvas.height = 600;
+  canvas.style.width = (800 * ratio) + 'px';
+  canvas.style.height = (600 * ratio) + 'px';
+}
+
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// Game State
+let gameState = 'start';
+let player;
+let opponents = [];
+let powerUps = [];
+let obstacles = [];
+let keys = {};
+let touchControls = {
+  left: false,
+  right: false,
+  up: false,
+  down: false,
+  item: false
+};
+let gameTime = 0;
+let currentLap = 1;
+const totalLaps = 3;
+
+// Track waypoints for AI and lap counting
+const track = {
+  checkpoints: [
+    { x: 400, y: 150, radius: 80 },
+    { x: 650, y: 200, radius: 80 },
+    { x: 700, y: 400, radius: 80 },
+    { x: 400, y: 500, radius: 80 },
+    { x: 100, y: 400, radius: 80 },
+    { x: 150, y: 200, radius: 80 }
+  ],
+  startLine: { x: 400, y: 100, width: 100, height: 10 }
+};
+
+// Kart Class
+class Kart {
+  constructor(x, y, color, isPlayer = false) {
+    this.x = x;
+    this.y = y;
+    this.width = 30;
+    this.height = 40;
+    this.angle = 0;
+    this.speed = 0;
+    this.maxSpeed = isPlayer ? 8 : 6;
+    this.acceleration = isPlayer ? 0.3 : 0.2;
+    this.friction = 0.95;
+    this.turnSpeed = 0.08;
+    this.color = color;
+    this.isPlayer = isPlayer;
+    this.boost = 0;
+    this.items = 0;
+    this.nextCheckpoint = 0;
+    this.laps = 0;
+    this.finished = false;
+    this.finishTime = 0;
+  }
+
+  update() {
+    // Apply boost
+    if (this.boost > 0) {
+      this.boost--;
+      this.speed = Math.min(this.speed + 0.5, this.maxSpeed * 1.5);
+    }
+
+    // Player controls
+    if (this.isPlayer) {
+      if (keys['ArrowUp'] || touchControls.up) {
+        this.speed += this.acceleration;
+      }
+      if (keys['ArrowDown'] || touchControls.down) {
+        this.speed -= this.acceleration * 0.5;
+      }
+      if (keys['ArrowLeft'] || touchControls.left) {
+        this.angle -= this.turnSpeed;
+      }
+      if (keys['ArrowRight'] || touchControls.right) {
+        this.angle += this.turnSpeed;
+      }
+      if (keys[' '] || touchControls.item) {
+        this.useItem();
+        touchControls.item = false;
+      }
+    } else {
+      // Simple AI
+      this.aiControl();
+    }
+
+    // Apply friction and limits
+    this.speed *= this.friction;
+    this.speed = Math.max(-this.maxSpeed / 2, Math.min(this.maxSpeed, this.speed));
+
+    // Move kart
+    this.x += Math.sin(this.angle) * this.speed;
+    this.y -= Math.cos(this.angle) * this.speed;
+
+    // Keep in bounds
+    this.x = Math.max(20, Math.min(canvas.width - 20, this.x));
+    this.y = Math.max(20, Math.min(canvas.height - 20, this.y));
+
+    // Check lap progress
+    this.checkLapProgress();
+  }
+
+  aiControl() {
+    const target = track.checkpoints[this.nextCheckpoint];
+    const dx = target.x - this.x;
+    const dy = target.y - this.y;
+    const targetAngle = Math.atan2(dx, -dy);
+
+    let angleDiff = targetAngle - this.angle;
+    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+    if (Math.abs(angleDiff) > 0.1) {
+      this.angle += Math.sign(angleDiff) * this.turnSpeed * 0.8;
+    }
+
+    this.speed += this.acceleration * 0.8;
+  }
+
+  checkLapProgress() {
+    const checkpoint = track.checkpoints[this.nextCheckpoint];
+    const dist = Math.hypot(this.x - checkpoint.x, this.y - checkpoint.y);
+
+    if (dist < checkpoint.radius) {
+      this.nextCheckpoint = (this.nextCheckpoint + 1) % track.checkpoints.length;
+
+      // Crossed finish line
+      if (this.nextCheckpoint === 0 && this.laps < totalLaps) {
+        this.laps++;
+        if (this.isPlayer) {
+          currentLap = this.laps + 1;
+          updateHUD();
+        }
+        if (this.laps >= totalLaps && !this.finished) {
+          this.finished = true;
+          this.finishTime = gameTime;
+          if (this.isPlayer) {
+            endGame(true);
+          }
+        }
+      }
+    }
+  }
+
+  useItem() {
+    if (this.items > 0) {
+      this.items--;
+      this.boost = 60;
+      updateHUD();
+    }
+  }
+
+  draw() {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle);
+
+    // Kart body
+    ctx.fillStyle = this.color;
+    ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+
+    // Kart details
+    ctx.fillStyle = this.isPlayer ? '#FFD700' : '#333';
+    ctx.fillRect(-this.width / 2 + 5, -this.height / 2 + 5, this.width - 10, 10);
+
+    // Boost effect
+    if (this.boost > 0) {
+      ctx.fillStyle = 'rgba(255, 100, 0, 0.6)';
+      ctx.fillRect(-this.width / 2 - 5, this.height / 2 - 10, this.width + 10, 15);
+    }
+
+    ctx.restore();
+
+    // Name label
+    if (!this.isPlayer) {
+      ctx.fillStyle = 'white';
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('AI', this.x, this.y - 30);
+    }
+  }
+}
+
+// Power-up Class
+class PowerUp {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.radius = 15;
+    this.collected = false;
+    this.respawnTimer = 0;
+  }
+
+  update() {
+    if (this.collected) {
+      this.respawnTimer++;
+      if (this.respawnTimer > 300) {
+        this.collected = false;
+        this.respawnTimer = 0;
+      }
+      return;
+    }
+
+    const dist = Math.hypot(player.x - this.x, player.y - this.y);
+    if (dist < this.radius + 15) {
+      this.collected = true;
+      player.items++;
+      updateHUD();
+    }
+  }
+
+  draw() {
+    if (!this.collected) {
+      ctx.fillStyle = '#FFD700';
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'white';
+      ctx.font = 'bold 20px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('⭐', this.x, this.y + 7);
+    }
+  }
+}
+
+// Obstacle Class
+class Obstacle {
+  constructor(x, y, width, height) {
+    this.x = x;
+    this.y = y;
+    this.width = width;
+    this.height = height;
+  }
+
+  update() {
+    // Check collision with player
+    const kartLeft = player.x - 15;
+    const kartRight = player.x + 15;
+    const kartTop = player.y - 20;
+    const kartBottom = player.y + 20;
+
+    if (kartRight > this.x && kartLeft < this.x + this.width &&
+        kartBottom > this.y && kartTop < this.y + this.height) {
+      player.speed *= 0.5;
+    }
+  }
+
+  draw() {
+    ctx.fillStyle = '#1E90FF';
+    ctx.fillRect(this.x, this.y, this.width, this.height);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.fillRect(this.x, this.y, this.width, this.height / 2);
+  }
+}
+
+// Initialize Game
+function initGame() {
+  gameTime = 0;
+  currentLap = 1;
+
+  player = new Kart(400, 80, '#FF1744', true);
+
+  opponents = [
+    new Kart(380, 60, '#2196F3'),
+    new Kart(420, 60, '#4CAF50'),
+    new Kart(360, 40, '#FF9800')
+  ];
+
+  powerUps = [
+    new PowerUp(650, 220),
+    new PowerUp(700, 420),
+    new PowerUp(100, 380),
+    new PowerUp(150, 180),
+    new PowerUp(400, 300)
+  ];
+
+  obstacles = [
+    new Obstacle(50, 250, 80, 100),
+    new Obstacle(670, 300, 100, 80),
+    new Obstacle(300, 450, 200, 60)
+  ];
+
+  updateHUD();
+}
+
+// Update HUD
+function updateHUD() {
+  document.getElementById('lap').textContent = `${currentLap}/${totalLaps}`;
+  document.getElementById('speed').textContent = Math.floor(Math.abs(player.speed * 10));
+  document.getElementById('items').textContent = player.items;
+
+  // Calculate position
+  const allKarts = [player, ...opponents].sort((a, b) => {
+    if (a.laps !== b.laps) return b.laps - a.laps;
+    return b.nextCheckpoint - a.nextCheckpoint;
+  });
+  const position = allKarts.indexOf(player) + 1;
+  const suffix = ['st', 'nd', 'rd', 'th'][Math.min(position - 1, 3)];
+  document.getElementById('position').textContent = position + suffix;
+}
+
+// Draw Track
+function drawTrack() {
+  // Sky and lake background
+  const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  gradient.addColorStop(0, '#87CEEB');
+  gradient.addColorStop(0.4, '#4682B4');
+  gradient.addColorStop(1, '#228B22');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Track outline
+  ctx.strokeStyle = '#8B4513';
+  ctx.lineWidth = 100;
+  ctx.beginPath();
+  track.checkpoints.forEach((cp, i) => {
+    if (i === 0) ctx.moveTo(cp.x, cp.y);
+    else ctx.lineTo(cp.x, cp.y);
+  });
+  ctx.closePath();
+  ctx.stroke();
+
+  // Track surface
+  ctx.strokeStyle = '#696969';
+  ctx.lineWidth = 80;
+  ctx.stroke();
+
+  // Start/Finish line
+  ctx.fillStyle = 'white';
+  for (let i = 0; i < 10; i++) {
+    ctx.fillRect(350 + i * 10, 95, 5, 10);
+  }
+
+  // Checkpoints (for debugging)
+  track.checkpoints.forEach((cp, i) => {
+    ctx.fillStyle = 'rgba(255, 255, 0, 0.2)';
+    ctx.beginPath();
+    ctx.arc(cp.x, cp.y, cp.radius, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// Game Loop
+function gameLoop() {
+  if (gameState !== 'playing') return;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  drawTrack();
+
+  obstacles.forEach(obs => {
+    obs.update();
+    obs.draw();
+  });
+
+  powerUps.forEach(pu => {
+    pu.update();
+    pu.draw();
+  });
+
+  opponents.forEach(opp => {
+    opp.update();
+    opp.draw();
+  });
+
+  player.update();
+  player.draw();
+
+  updateHUD();
+  gameTime++;
+
+  requestAnimationFrame(gameLoop);
+}
+
+// Start Game
+function startGame() {
+  document.getElementById('startScreen').classList.add('hidden');
+  gameState = 'playing';
+  initGame();
+  gameLoop();
+}
+
+// End Game
+function endGame(won) {
+  gameState = 'ended';
+  const resultScreen = document.getElementById('gameOverScreen');
+  const resultTitle = document.getElementById('resultTitle');
+  const resultText = document.getElementById('resultText');
+  const finalTime = document.getElementById('finalTime');
+
+  resultTitle.textContent = won ? '🏆 You Won! 🏆' : '😔 Race Over';
+  resultText.textContent = won ?
+    'Congratulations! You conquered the Punta San Vigilio circuit!' :
+    'Better luck next time!';
+  finalTime.textContent = (gameTime / 60).toFixed(2);
+
+  resultScreen.classList.remove('hidden');
+}
+
+// Restart Game
+function restartGame() {
+  document.getElementById('gameOverScreen').classList.add('hidden');
+  startGame();
+}
+
+// Keyboard Controls
+window.addEventListener('keydown', (e) => {
+  keys[e.key] = true;
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
+    e.preventDefault();
+  }
+});
+
+window.addEventListener('keyup', (e) => {
+  keys[e.key] = false;
+});
+
+// Touch Controls
+function setupTouchControls() {
+  const buttons = {
+    leftBtn: 'left',
+    rightBtn: 'right',
+    upBtn: 'up',
+    downBtn: 'down',
+    itemBtn: 'item'
+  };
+
+  Object.entries(buttons).forEach(([btnId, control]) => {
+    const btn = document.getElementById(btnId);
+
+    btn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      touchControls[control] = true;
+    });
+
+    btn.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      touchControls[control] = false;
+    });
+
+    btn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      touchControls[control] = true;
+    });
+
+    btn.addEventListener('mouseup', (e) => {
+      e.preventDefault();
+      touchControls[control] = false;
+    });
+  });
+}
+
+setupTouchControls();
+
+// Prevent scrolling on mobile
+document.body.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+}, { passive: false });
