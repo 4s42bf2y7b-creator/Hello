@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kindle Reader - Free Read-It-Later with Send to Kindle</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Auth Container -->
+  <div id="auth-container" class="container">
+    <div class="auth-box">
+      <h1>Kindle Reader</h1>
+      <p class="subtitle">Free read-it-later app with Send to Kindle</p>
+
+      <div id="login-form" class="auth-form">
+        <h2>Login</h2>
+        <input type="email" id="login-email" placeholder="Email" required>
+        <input type="password" id="login-password" placeholder="Password" required>
+        <button onclick="login()">Login</button>
+        <p class="switch-auth">Don't have an account? <a href="#" onclick="showRegister()">Register</a></p>
+      </div>
+
+      <div id="register-form" class="auth-form" style="display: none;">
+        <h2>Register</h2>
+        <input type="text" id="register-username" placeholder="Username" required>
+        <input type="email" id="register-email" placeholder="Email" required>
+        <input type="password" id="register-password" placeholder="Password" required>
+        <input type="email" id="register-kindle" placeholder="Kindle Email (optional)">
+        <button onclick="register()">Register</button>
+        <p class="switch-auth">Already have an account? <a href="#" onclick="showLogin()">Login</a></p>
+      </div>
+
+      <div id="auth-error" class="error" style="display: none;"></div>
+    </div>
+  </div>
+
+  <!-- Main App Container -->
+  <div id="app-container" style="display: none;">
+    <!-- Header -->
+    <header>
+      <div class="header-content">
+        <h1>Kindle Reader</h1>
+        <div class="header-actions">
+          <button onclick="showAddArticle()" class="btn-primary">+ Add Article</button>
+          <button onclick="showSettings()" class="btn-secondary">Settings</button>
+          <button onclick="logout()" class="btn-secondary">Logout</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <nav>
+        <a href="#" onclick="loadArticles('all')" class="nav-item active" data-filter="all">
+          <span>All Articles</span>
+          <span id="count-all" class="count">0</span>
+        </a>
+        <a href="#" onclick="loadArticles('unread')" class="nav-item" data-filter="unread">
+          <span>Unread</span>
+          <span id="count-unread" class="count">0</span>
+        </a>
+        <a href="#" onclick="loadArticles('favorites')" class="nav-item" data-filter="favorites">
+          <span>Favorites</span>
+          <span id="count-favorites" class="count">0</span>
+        </a>
+        <a href="#" onclick="loadArticles('archived')" class="nav-item" data-filter="archived">
+          <span>Archived</span>
+          <span id="count-archived" class="count">0</span>
+        </a>
+      </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main id="main-content">
+      <!-- Article List View -->
+      <div id="article-list-view">
+        <div id="articles-container"></div>
+      </div>
+
+      <!-- Article Reader View -->
+      <div id="article-reader-view" style="display: none;">
+        <div class="reader-header">
+          <button onclick="closeReader()" class="btn-back">← Back to List</button>
+          <div class="reader-actions">
+            <button onclick="toggleFavorite()" id="btn-favorite" class="btn-icon">☆</button>
+            <button onclick="toggleRead()" id="btn-read" class="btn-icon">✓</button>
+            <button onclick="archiveArticle()" class="btn-icon">📁</button>
+            <button onclick="sendCurrentToKindle()" class="btn-primary">Send to Kindle</button>
+          </div>
+        </div>
+        <article id="article-content"></article>
+      </div>
+    </main>
+
+    <!-- Add Article Modal -->
+    <div id="add-article-modal" class="modal" style="display: none;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Add Article</h2>
+          <button onclick="closeAddArticle()" class="btn-close">×</button>
+        </div>
+        <div class="modal-body">
+          <input type="url" id="article-url" placeholder="Enter article URL" required>
+          <button onclick="saveArticle()" class="btn-primary">Save Article</button>
+          <div id="save-status" class="status-message" style="display: none;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal" style="display: none;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Settings</h2>
+          <button onclick="closeSettings()" class="btn-close">×</button>
+        </div>
+        <div class="modal-body">
+          <h3>Kindle Email</h3>
+          <p class="help-text">Enter your Kindle email address (e.g., username@kindle.com)</p>
+          <input type="email" id="settings-kindle-email" placeholder="your-kindle@kindle.com">
+          <button onclick="saveSettings()" class="btn-primary">Save Settings</button>
+
+          <hr>
+
+          <h3>Bookmarklet</h3>
+          <p class="help-text">Drag this button to your bookmarks bar for quick article saving:</p>
+          <a href="javascript:(function(){const url=window.location.href;window.open('http://localhost:3000?url='+encodeURIComponent(url),'_blank')})();" class="bookmarklet">Save to Kindle Reader</a>
+
+          <hr>
+
+          <h3>Email Setup</h3>
+          <p class="help-text">To send articles to Kindle, configure your email settings in the .env file:</p>
+          <pre>EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USER=your-email@gmail.com
+EMAIL_PASS=your-app-password</pre>
+          <p class="help-text">Also, add your sending email to your Amazon Kindle approved email list at: <a href="https://www.amazon.com/hz/mycd/myx#/home/settings/payment" target="_blank">Amazon Personal Document Settings</a></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
